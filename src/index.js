@@ -1,8 +1,9 @@
 const express = require('express')
+const cors = require('cors')
 const { Pool} = require('pg')
 require('dotenv').config()
 
-const PORT = 3333
+const PORT = process.env.PORT || 3333
 
 const pool = new Pool({
     connectionString: process.env.POSTGRES_URL
@@ -11,6 +12,7 @@ const pool = new Pool({
 const app = express()
 
 app.use(express.json())
+app.use(cors())
 
 app.get('/', (req, res) => {console.log('Olá mundo')})
 
@@ -62,6 +64,8 @@ app.patch('/todo/:user_id/:todo_id', async (req, res ) => {
     const { user_id, todo_id } = req.params
     const data = req.body
     try{
+        const belongsToUser = await pool.query('SELECT * FROM todos WHERE user_id = ($1) AND todo_id = ($2)', [user_id, todo_id]) 
+        if (!belongsToUser.rows[0]) return res.status(400).send('Operation not allowed')
         const updatedTodo = await pool.query('UPDATE todos SET todo_description = ($1), todo_done = ($2) WHERE todo_id = ($3) RETURNING *', 
         [data.description, data.done, todo_id])
         return res.status(400).send(updatedTodo.rows)
@@ -69,5 +73,21 @@ app.patch('/todo/:user_id/:todo_id', async (req, res ) => {
         return res.status(400).send(err)
     }
 })
+
+app.delete('/todo/:user_id/:todo_id', async (req, res ) => {
+    const { user_id, todo_id } = req.params
+    try{
+        const belongsToUser = await pool.query('SELECT * FROM todos WHERE user_id = ($1) AND todo_id = ($2)', [user_id, todo_id]) 
+        if (!belongsToUser.rows[0]) return res.status(400).send('Operation not allowed')
+        const deletedTodo = await pool.query('DELETE FROM todos WHERE todo_id = ($1) RETURNING *', [todo_id])
+        return res.status(200).send({
+            message: 'Todo successfully deleted',
+            deletedTodo: deletedTodo.rows
+        })
+    } catch(err){
+        return res.status(400).send(err)
+    }
+})
+
 
 app.listen(PORT, () => console.log('Server running on port ${PORT}'))
